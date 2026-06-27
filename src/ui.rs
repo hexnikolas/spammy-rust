@@ -8,8 +8,8 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
     style.visuals.panel_fill = Color32::from_rgb(240, 240, 240);
     style.visuals.extreme_bg_color = Color32::from_rgb(220, 220, 220);
     style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(200, 200, 200);
-    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+    style.spacing.button_padding = egui::vec2(10.0, 6.0);
     ctx.set_style(style);
     
     egui::CentralPanel::default()
@@ -19,20 +19,7 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
-                    // Header line 1
-                    ui.horizontal(|ui| {
-                        ui.heading(egui::RichText::new("SPAMMY").color(Color32::BLACK).size(24.0));
-                        
-                        ui.separator();
-                        
-                        // Mode selector
-                        ui.label("Mode:");
-                        if ui.button("Spam").clicked() {
-                            // Mode selection
-                        }
-                    });
-                    
-                    // Header line 2
+                    // Controls row
                     ui.horizontal(|ui| {
                         // Frequency control
                         ui.label("Frequency:");
@@ -124,11 +111,11 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
     let keyboard = app.get_keyboard_layout();
     let keys = keyboard.keys.clone();
     
-    // Sizing - made smaller to prevent cutoff
+    // Sizing - scaled up for better visibility
     let available_width = ui.available_width() - 5.0;
-    let key_base_width = (available_width / 16.0).max(20.0);  // Reduced from 14.0 to 16.0 divisor
-    let key_height = 28.0;  // Slightly reduced from 32.0
-    let font_size = 10.0;   // Slightly reduced from 11.0
+    let key_base_width = (available_width / 15.0).max(28.0);
+    let key_height = 38.0;
+    let font_size = 13.0;
     
     // Group keys by row
     let mut rows: Vec<Vec<_>> = vec![vec![]];
@@ -148,11 +135,20 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
             let row_width: f32 = row_keys.iter().map(|k| k.width).sum();
             
             for key in row_keys {
+                // Handle spacer keys - just add empty space
+                if key.is_spacer {
+                    let spacer_width = key_base_width * key.width;
+                    ui.add_space(spacer_width);
+                    continue;
+                }
+                
                 let is_active = (key.code as usize) < active_keys.len() && active_keys[key.code as usize];
                 let is_pressed = (key.code as usize) < pressed_keys.len() && pressed_keys[key.code as usize];
                 
                 // Determine key styling - match reference image colors
-                let bg_color = if is_active {
+                let bg_color = if is_active && is_pressed {
+                    Color32::from_rgb(200, 100, 0)  // Darker orange when active AND pressed
+                } else if is_active {
                     Color32::from_rgb(255, 140, 0)  // Orange for Spammy (active)
                 } else if is_pressed {
                     Color32::from_rgb(100, 100, 100)  // Darker gray when physically pressed
