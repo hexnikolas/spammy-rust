@@ -140,6 +140,38 @@ impl KeySender {
         Ok(())
     }
     
+    /// Send multiple keys in a single xdotool call (much more efficient)
+    pub fn send_keys_batch(&self, keycodes: &[u32]) -> Result<(), Box<dyn std::error::Error>> {
+        if keycodes.is_empty() {
+            return Ok(());
+        }
+        
+        let _lock = SEND_LOCK.lock();
+        
+        // Collect all valid key names
+        let key_names: Vec<&str> = keycodes
+            .iter()
+            .filter_map(|&code| Self::keycode_to_xdotool_name(code))
+            .collect();
+        
+        if key_names.is_empty() {
+            return Ok(());
+        }
+        
+        // Send all keys in one xdotool call
+        let output = Command::new("xdotool")
+            .arg("key")
+            .args(&key_names)
+            .output()?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("xdotool error: {}", stderr).into());
+        }
+        
+        Ok(())
+    }
+    
     fn send_key_xdotool(&self, keycode: u32) -> Result<(), Box<dyn std::error::Error>> {
         // Lock to prevent concurrent sends
         let _lock = SEND_LOCK.lock();
@@ -228,7 +260,7 @@ impl KeySender {
             107 => Some("End"),
             108 => Some("Down"),
             110 => Some("Home"),
-            111 => Some("Up"),
+            111 => Some("Delete"),
             112 => Some("Prior"),
             113 => Some("Left"),
             114 => Some("Right"),

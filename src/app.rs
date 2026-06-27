@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use crate::keyboard::KeyboardLayout;
-use crate::profile::Profile;
+use crate::profile::{Profile, ProfilesData, save_profiles, load_profiles};
 use crate::input_handler::InputHandler;
 use crate::key_sender::KeySender;
 use lazy_static::lazy_static;
@@ -14,8 +13,7 @@ lazy_static! {
 pub struct SpammyApp {
     enabled: bool,
     keyboard_layout: KeyboardLayout,
-    profiles: HashMap<String, Profile>,
-    active_profile: Option<String>,
+    profiles_data: ProfilesData,
     active_keys: Vec<bool>,
     pressed_keys: Vec<bool>,
     prev_pressed_keys: Vec<bool>,
@@ -28,20 +26,34 @@ pub struct SpammyApp {
     target_window_name: Option<String>,
     available_windows: Vec<(u32, String)>,
     show_window_picker: bool,
+    new_profile_name: String,
 }
 
 impl SpammyApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        // Load profiles first
+        let profiles_data = load_profiles();
+        
+        // Get initial state from active profile
+        let (active_keys, interval, target_window) = if let Some(ref name) = profiles_data.active_profile {
+            if let Some(profile) = profiles_data.profiles.iter().find(|p| &p.name == name) {
+                (profile.to_active_keys_vec(), profile.repeat_interval_ms, profile.target_window_name.clone())
+            } else {
+                (vec![false; 256], 100, None)
+            }
+        } else {
+            (vec![false; 256], 100, None)
+        };
+        
         let mut app = SpammyApp {
             enabled: true,
             keyboard_layout: KeyboardLayout::new(),
-            profiles: HashMap::new(),
-            active_profile: None,
-            active_keys: vec![false; 256],
+            profiles_data,
+            active_keys,
             pressed_keys: vec![false; 256],
             prev_pressed_keys: vec![false; 256],
             last_key_send: Instant::now(),
-            key_repeat_interval: Duration::from_millis(100),
+            key_repeat_interval: Duration::from_millis(interval),
             input_handler: None,
             key_sender: None,
             show_debug: false,
@@ -49,15 +61,19 @@ impl SpammyApp {
             target_window_name: None,
             available_windows: Vec::new(),
             show_window_picker: false,
+            new_profile_name: String::new(),
         };
+        
+        // Restore target window after app is created
+        if let Some(ref window_name) = target_window {
+            app.set_target_window_by_name(window_name);
+        }
         
         app.initialize();
         app
     }
     
     fn initialize(&mut self) {
-        self.load_profiles();
-        
         // Initialize input handler (requires sudo/proper permissions)
         match InputHandler::new() {
             Ok(handler) => {
@@ -90,11 +106,87 @@ impl SpammyApp {
         }
     }
     
-    fn load_profiles(&mut self) {
-        // Load profiles from JSON config file
-        let default_profile = Profile::default();
-        self.profiles.insert("Default".to_string(), default_profile);
-        self.active_profile = Some("Default".to_string());
+    // Profile management
+    pub fn get_profile_names(&self) -> Vec<String> {
+        self.profiles_data.profiles.iter().map(|p| p.name.clone()).collect()
+    }
+    
+    pub fn get_active_profile_name(&self) -> Option<&str> {
+        self.profiles_data.active_profile.as_deref()
+    }
+    
+    pub fn select_profile(&mut self, name: &str) {
+        // Clone data first to avoid borrow issues
+        let profile_data = self.profiles_data.profiles.iter()
+            .find(|p| p.name == name)
+            .map(|p| (p.to_active_keys_vec(), p.repeat_interval_ms, p.target_window_name.clone()));
+        
+        if let Some((keys, interval, target_window)) = profile_data {
+            self.active_keys = keys;
+            self.key_repeat_interval = Duration::from_millis(interval);
+            self.profiles_data.active_profile = Some(name.to_string());
+            
+            // Restore target window by name
+            if let Some(window_name) = target_window {
+                self.set_target_window_by_name(&window_name);
+            } else {
+                self.clear_target_window();
+            }
+        }
+    }
+    
+    pub fn save_current_as_profile(&mut self, name: &str) {
+        println!("Saving profile: '{}'", name);
+        let profile = Profile::from_state(
+            name, 
+            &self.active_keys, 
+            self.key_repeat_interval.as_millis() as u64,
+            self.target_window_name.clone(),
+        );
+        
+        // Update or add profile
+        if let Some(existing) = self.profiles_data.profiles.iter_mut().find(|p| p.name == name) {
+            println!("Updating existing profile");
+            *existing = profile;
+        } else {
+            println!("Adding new profile");
+            self.profiles_data.profiles.push(profile);
+        }
+        
+        self.profiles_data.active_profile = Some(name.to_string());
+        println!("Total profiles: {}", self.profiles_data.profiles.len());
+        
+        if let Err(e) = save_profiles(&self.profiles_data) {
+            eprintln!("Failed to save profiles: {}", e);
+        }
+    }
+    
+    pub fn delete_profile(&mut self, name: &str) {
+        // Don't delete the last profile
+        if self.profiles_data.profiles.len() <= 1 {
+            return;
+        }
+        
+        self.profiles_data.profiles.retain(|p| p.name != name);
+        
+        // If we deleted the active profile, switch to the first one
+        if self.profiles_data.active_profile.as_deref() == Some(name) {
+            if let Some(first) = self.profiles_data.profiles.first() {
+                self.select_profile(&first.name.clone());
+            }
+        }
+        
+        if let Err(e) = save_profiles(&self.profiles_data) {
+            eprintln!("Failed to save profiles: {}", e);
+        }
+    }
+    
+    pub fn get_new_profile_name(&self) -> &str {
+        &self.new_profile_name
+    }
+    
+    pub fn set_new_profile_name(&mut self, name: String) {
+        self.new_profile_name = name;
     }
     
     pub fn toggle_key(&mut self, key_index: usize) {
@@ -112,10 +204,6 @@ impl SpammyApp {
     }
     
     pub fn update(&mut self) {
-        if !self.enabled {
-            return;
-        }
-        
         // Update pressed keys from input handler
         if let Some(handler) = &self.input_handler {
             if let Ok(h) = handler.lock() {
@@ -127,6 +215,11 @@ impl SpammyApp {
         
         // Send ALL pressed keys every frame (normal keyboard behavior)
         self.send_all_pressed_keys();
+        
+        // Only spam active keys when enabled
+        if !self.enabled {
+            return;
+        }
         
         // On timer, spam only the active keys
         let now = Instant::now();
@@ -146,16 +239,14 @@ impl SpammyApp {
                 
                 // Key pressed (transition from not-pressed to pressed)
                 if is_pressed && !was_pressed {
-                    if let Err(e) = sender.key_down(code) {
+                    if let Err(_e) = sender.key_down(code) {
                         // Silently ignore errors for unmapped keys
-                        eprintln!("Failed to press key {}: {}", code, e);
                     }
                 }
                 // Key released (transition from pressed to not-pressed)
                 else if !is_pressed && was_pressed {
-                    if let Err(e) = sender.key_up(code) {
+                    if let Err(_e) = sender.key_up(code) {
                         // Silently ignore errors for unmapped keys
-                        eprintln!("Failed to release key {}: {}", code, e);
                     }
                 }
             }
@@ -173,15 +264,33 @@ impl SpammyApp {
             }
         }
         
+        // Modifier keys - never spam these (can cause system freezes)
+        const MODIFIER_KEYS: &[u32] = &[
+            29,  // Ctrl_L
+            97,  // Ctrl_R
+            42,  // Shift_L
+            54,  // Shift_R
+            56,  // Alt_L
+            100, // Alt_R
+            125, // Super_L (Win)
+            126, // Super_R
+        ];
+        
         if let Some(sender) = &self.key_sender {
-            // Spam all active keys that are currently pressed
-            for code in 0..256u32 {
-                let code_idx = code as usize;
-                if code_idx < self.active_keys.len() && self.active_keys[code_idx] 
-                    && code_idx < self.pressed_keys.len() && self.pressed_keys[code_idx] {
-                    if let Err(_e) = sender.send_key(code) {
-                        // Silently ignore errors for unmapped keys
-                    }
+            // Collect all keys that should be spammed (active AND currently pressed, excluding modifiers)
+            let keys_to_spam: Vec<u32> = (0..256u32)
+                .filter(|&code| {
+                    let idx = code as usize;
+                    idx < self.active_keys.len() && self.active_keys[idx]
+                        && idx < self.pressed_keys.len() && self.pressed_keys[idx]
+                        && !MODIFIER_KEYS.contains(&code)
+                })
+                .collect();
+            
+            // Send all keys in a single xdotool call
+            if !keys_to_spam.is_empty() {
+                if let Err(_e) = sender.send_keys_batch(&keys_to_spam) {
+                    // Silently ignore errors
                 }
             }
         }
@@ -280,6 +389,31 @@ impl SpammyApp {
         }
         
         self.show_window_picker = false;
+    }
+    
+    pub fn set_target_window_by_name(&mut self, name: &str) {
+        // Search for window by name using xdotool
+        if let Ok(output) = std::process::Command::new("xdotool")
+            .arg("search")
+            .arg("--name")
+            .arg(name)
+            .output() {
+            if let Ok(ids_str) = String::from_utf8(output.stdout) {
+                // Get the first matching window ID
+                if let Some(id_str) = ids_str.lines().next() {
+                    if let Ok(window_id) = id_str.trim().parse::<u32>() {
+                        self.target_window_id = Some(window_id);
+                        self.target_window_name = Some(name.to_string());
+                        println!("✓ Target window restored: {} (ID: {})", name, window_id);
+                        return;
+                    }
+                }
+            }
+        }
+        // Window not found - keep the name but clear the ID
+        self.target_window_name = Some(name.to_string());
+        self.target_window_id = None;
+        println!("⚠ Target window '{}' not found (may need to open it)", name);
     }
     
     pub fn toggle_window_picker(&mut self) {

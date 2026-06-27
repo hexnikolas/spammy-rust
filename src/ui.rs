@@ -49,6 +49,55 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
                     
                     ui.separator();
                     
+                    // Profile controls
+                    ui.horizontal(|ui| {
+                        ui.label("Profile:");
+                        
+                        // Profile selector dropdown
+                        let current_profile = app.get_active_profile_name().unwrap_or("Default").to_string();
+                        let profile_names = app.get_profile_names();
+                        
+                        egui::ComboBox::from_id_source("profile_selector")
+                            .selected_text(&current_profile)
+                            .show_ui(ui, |ui| {
+                                for name in &profile_names {
+                                    if ui.selectable_label(name == &current_profile, name).clicked() {
+                                        app.select_profile(name);
+                                    }
+                                }
+                            });
+                        
+                        ui.separator();
+                        
+                        // Profile name input (for new or rename)
+                        let mut new_name = app.get_new_profile_name().to_string();
+                        ui.add(egui::TextEdit::singleline(&mut new_name)
+                            .hint_text("Profile name")
+                            .desired_width(120.0)
+                            .text_color(Color32::BLACK));
+                        app.set_new_profile_name(new_name.clone());
+                        
+                        // Save button - saves to text field name if provided, otherwise current profile
+                        if ui.button("💾 Save").clicked() {
+                            let save_name = if new_name.trim().is_empty() {
+                                current_profile.clone()
+                            } else {
+                                new_name.trim().to_string()
+                            };
+                            app.save_current_as_profile(&save_name);
+                            app.set_new_profile_name(String::new());
+                        }
+                        
+                        // Delete button (only if more than 1 profile)
+                        if profile_names.len() > 1 {
+                            if ui.button("Del").clicked() {
+                                app.delete_profile(&current_profile);
+                            }
+                        }
+                    });
+                    
+                    ui.separator();
+                    
                     // Target window control
                     ui.horizontal(|ui| {
                         if ui.button("📍 Target Window").clicked() {

@@ -29,18 +29,13 @@ impl InputHandler {
         std::thread::spawn(move || {
             if let Ok(mut device_opt) = device_clone.lock() {
                 if let Some(device) = device_opt.as_mut() {
-                    // Set non-blocking mode
+                    // Grab exclusive access - we'll re-send all keys via xdotool
                     let _ = device.grab();
-                    
-                    let mut event_count = 0;
-                    let mut last_print = std::time::Instant::now();
                     
                     loop {
                         match device.fetch_events() {
                             Ok(events) => {
                                 for event in events {
-                                    event_count += 1;
-                                    
                                     if event.event_type() == EventType::KEY {
                                         let keycode = event.code() as usize;
                                         let value = event.value();
