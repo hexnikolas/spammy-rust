@@ -1,0 +1,116 @@
+/// Keyboard layout and key definitions
+#[derive(Clone)]
+pub struct KeyboardLayout {
+    pub keys: Vec<KeyInfo>,
+}
+
+#[derive(Clone, Debug)]
+pub struct KeyInfo {
+    pub code: u32,
+    pub name: String,
+    pub row: usize,
+    pub col: usize,
+    pub width: f32,
+}
+
+impl KeyboardLayout {
+    pub fn new() -> Self {
+        let keys = vec![
+            // F-keys row
+            KeyInfo { code: 59, name: "F1".to_string(), row: 0, col: 0, width: 1.0 },
+            KeyInfo { code: 60, name: "F2".to_string(), row: 0, col: 1, width: 1.0 },
+            KeyInfo { code: 61, name: "F3".to_string(), row: 0, col: 2, width: 1.0 },
+            KeyInfo { code: 62, name: "F4".to_string(), row: 0, col: 3, width: 1.0 },
+            KeyInfo { code: 63, name: "F5".to_string(), row: 0, col: 4, width: 1.0 },
+            KeyInfo { code: 64, name: "F6".to_string(), row: 0, col: 5, width: 1.0 },
+            KeyInfo { code: 65, name: "F7".to_string(), row: 0, col: 6, width: 1.0 },
+            KeyInfo { code: 66, name: "F8".to_string(), row: 0, col: 7, width: 1.0 },
+            KeyInfo { code: 67, name: "F9".to_string(), row: 0, col: 8, width: 1.0 },
+            KeyInfo { code: 68, name: "F10".to_string(), row: 0, col: 9, width: 1.0 },
+            KeyInfo { code: 87, name: "F11".to_string(), row: 0, col: 10, width: 1.0 },
+            KeyInfo { code: 88, name: "F12".to_string(), row: 0, col: 11, width: 1.0 },
+            
+            // Number row
+            KeyInfo { code: 41, name: "ESC".to_string(), row: 1, col: 0, width: 1.0 },
+            KeyInfo { code: 2, name: "1".to_string(), row: 1, col: 1, width: 1.0 },
+            KeyInfo { code: 3, name: "2".to_string(), row: 1, col: 2, width: 1.0 },
+            KeyInfo { code: 4, name: "3".to_string(), row: 1, col: 3, width: 1.0 },
+            KeyInfo { code: 5, name: "4".to_string(), row: 1, col: 4, width: 1.0 },
+            KeyInfo { code: 6, name: "5".to_string(), row: 1, col: 5, width: 1.0 },
+            KeyInfo { code: 7, name: "6".to_string(), row: 1, col: 6, width: 1.0 },
+            KeyInfo { code: 8, name: "7".to_string(), row: 1, col: 7, width: 1.0 },
+            KeyInfo { code: 9, name: "8".to_string(), row: 1, col: 8, width: 1.0 },
+            KeyInfo { code: 10, name: "9".to_string(), row: 1, col: 9, width: 1.0 },
+            KeyInfo { code: 11, name: "0".to_string(), row: 1, col: 10, width: 1.0 },
+            KeyInfo { code: 12, name: "-".to_string(), row: 1, col: 11, width: 1.0 },
+            KeyInfo { code: 13, name: "=".to_string(), row: 1, col: 12, width: 1.0 },
+            KeyInfo { code: 14, name: "BKSP".to_string(), row: 1, col: 13, width: 1.0 },
+            
+            // QWERTY row
+            KeyInfo { code: 15, name: "TAB".to_string(), row: 2, col: 0, width: 1.2 },
+            KeyInfo { code: 16, name: "Q".to_string(), row: 2, col: 1, width: 1.0 },
+            KeyInfo { code: 17, name: "W".to_string(), row: 2, col: 2, width: 1.0 },
+            KeyInfo { code: 18, name: "E".to_string(), row: 2, col: 3, width: 1.0 },
+            KeyInfo { code: 19, name: "R".to_string(), row: 2, col: 4, width: 1.0 },
+            KeyInfo { code: 20, name: "T".to_string(), row: 2, col: 5, width: 1.0 },
+            KeyInfo { code: 21, name: "Y".to_string(), row: 2, col: 6, width: 1.0 },
+            KeyInfo { code: 22, name: "U".to_string(), row: 2, col: 7, width: 1.0 },
+            KeyInfo { code: 23, name: "I".to_string(), row: 2, col: 8, width: 1.0 },
+            KeyInfo { code: 24, name: "O".to_string(), row: 2, col: 9, width: 1.0 },
+            KeyInfo { code: 25, name: "P".to_string(), row: 2, col: 10, width: 1.0 },
+            KeyInfo { code: 26, name: "[".to_string(), row: 2, col: 11, width: 1.0 },
+            KeyInfo { code: 27, name: "]".to_string(), row: 2, col: 12, width: 1.0 },
+            
+            // ASDF row
+            KeyInfo { code: 58, name: "CAPS".to_string(), row: 3, col: 0, width: 1.3 },
+            KeyInfo { code: 30, name: "A".to_string(), row: 3, col: 1, width: 1.0 },
+            KeyInfo { code: 31, name: "S".to_string(), row: 3, col: 2, width: 1.0 },
+            KeyInfo { code: 32, name: "D".to_string(), row: 3, col: 3, width: 1.0 },
+            KeyInfo { code: 33, name: "F".to_string(), row: 3, col: 4, width: 1.0 },
+            KeyInfo { code: 34, name: "G".to_string(), row: 3, col: 5, width: 1.0 },
+            KeyInfo { code: 35, name: "H".to_string(), row: 3, col: 6, width: 1.0 },
+            KeyInfo { code: 36, name: "J".to_string(), row: 3, col: 7, width: 1.0 },
+            KeyInfo { code: 37, name: "K".to_string(), row: 3, col: 8, width: 1.0 },
+            KeyInfo { code: 38, name: "L".to_string(), row: 3, col: 9, width: 1.0 },
+            KeyInfo { code: 39, name: ";".to_string(), row: 3, col: 10, width: 1.0 },
+            KeyInfo { code: 40, name: "'".to_string(), row: 3, col: 11, width: 1.0 },
+            KeyInfo { code: 28, name: "ENTER".to_string(), row: 3, col: 12, width: 1.3 },
+            
+            // ZXCV row
+            KeyInfo { code: 42, name: "SHIFT".to_string(), row: 4, col: 0, width: 1.4 },
+            KeyInfo { code: 44, name: "Z".to_string(), row: 4, col: 1, width: 1.0 },
+            KeyInfo { code: 45, name: "X".to_string(), row: 4, col: 2, width: 1.0 },
+            KeyInfo { code: 46, name: "C".to_string(), row: 4, col: 3, width: 1.0 },
+            KeyInfo { code: 47, name: "V".to_string(), row: 4, col: 4, width: 1.0 },
+            KeyInfo { code: 48, name: "B".to_string(), row: 4, col: 5, width: 1.0 },
+            KeyInfo { code: 49, name: "N".to_string(), row: 4, col: 6, width: 1.0 },
+            KeyInfo { code: 50, name: "M".to_string(), row: 4, col: 7, width: 1.0 },
+            KeyInfo { code: 51, name: ",".to_string(), row: 4, col: 8, width: 1.0 },
+            KeyInfo { code: 52, name: ".".to_string(), row: 4, col: 9, width: 1.0 },
+            KeyInfo { code: 53, name: "/".to_string(), row: 4, col: 10, width: 1.0 },
+            KeyInfo { code: 54, name: "SHIFT".to_string(), row: 4, col: 11, width: 1.4 },
+            
+            // Space bar row
+            KeyInfo { code: 29, name: "CTRL".to_string(), row: 5, col: 0, width: 1.2 },
+            KeyInfo { code: 125, name: "WIN".to_string(), row: 5, col: 1, width: 1.2 },
+            KeyInfo { code: 56, name: "ALT".to_string(), row: 5, col: 2, width: 1.2 },
+            KeyInfo { code: 57, name: "SPACE".to_string(), row: 5, col: 3, width: 4.5 },
+            KeyInfo { code: 100, name: "ALT".to_string(), row: 5, col: 4, width: 1.2 },
+            KeyInfo { code: 126, name: "WIN".to_string(), row: 5, col: 5, width: 1.2 },
+            KeyInfo { code: 127, name: "MENU".to_string(), row: 5, col: 6, width: 1.2 },
+            KeyInfo { code: 97, name: "CTRL".to_string(), row: 5, col: 7, width: 1.2 },
+        ];
+        
+        KeyboardLayout { keys }
+    }
+    
+    pub fn get_key_by_code(&self, code: u32) -> Option<&KeyInfo> {
+        self.keys.iter().find(|k| k.code == code)
+    }
+}
+
+impl Default for KeyboardLayout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
