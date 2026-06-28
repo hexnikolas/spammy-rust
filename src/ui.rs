@@ -97,43 +97,45 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
                     // Target window and input device controls
                     ui.horizontal(|ui| {
                         // Target window
-                        if ui.button("📍 Target Window").clicked() {
+                        if ui.button("Target Window").clicked() {
                             app.toggle_window_picker();
                         }
                         
                         if let Some(name) = app.get_target_window_name() {
-                            ui.label(format!("→ {}", name));
+                            ui.label(format!("> {}", name));
                         } else {
-                            ui.colored_label(Color32::from_rgb(150, 150, 150), "All windows");
+                            ui.colored_label(Color32::from_rgb(150, 150, 150), "> All windows");
                         }
                         
-                        if ui.button("✕").clicked() {
+                        if ui.button("X").clicked() {
                             app.clear_target_window();
                         }
                         
                         ui.separator();
                         
-                        // Input device selector
-                        ui.label("Input:");
-                        let current_device = app.get_current_input_device().unwrap_or("None").to_string();
-                        let devices: Vec<_> = app.get_available_input_devices().to_vec();
-                        
-                        // Show just the device name, not full path
-                        let current_display = devices.iter()
-                            .find(|d| d.path == current_device)
-                            .map(|d| d.name.clone())
-                            .unwrap_or_else(|| current_device.clone());
-                        
-                        egui::ComboBox::from_id_source("input_device_selector")
-                            .selected_text(&current_display)
-                            .width(180.0)
-                            .show_ui(ui, |ui| {
-                                for device in &devices {
-                                    if ui.selectable_label(device.path == current_device, &device.name).clicked() {
-                                        app.switch_input_device(&device.path);
+                        // Input device selector - use with_layout to center vertically
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.label("Input:");
+                            let current_device = app.get_current_input_device().unwrap_or("None").to_string();
+                            let devices: Vec<_> = app.get_available_input_devices().to_vec();
+                            
+                            // Show just the device name, not full path
+                            let current_display = devices.iter()
+                                .find(|d| d.path == current_device)
+                                .map(|d| d.name.clone())
+                                .unwrap_or_else(|| current_device.clone());
+                            
+                            egui::ComboBox::from_id_source("input_device_selector")
+                                .selected_text(&current_display)
+                                .width(180.0)
+                                .show_ui(ui, |ui| {
+                                    for device in &devices {
+                                        if ui.selectable_label(device.path == current_device, &device.name).clicked() {
+                                            app.switch_input_device(&device.path);
+                                        }
                                     }
-                                }
-                            });
+                                });
+                        });
                     });
                     
                     // Window picker dropdown
