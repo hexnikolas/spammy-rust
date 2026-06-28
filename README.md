@@ -5,12 +5,6 @@
 This repository is a Rust fork of the original Spammy project at https://github.com/FrostAtom/spammy.
 It is written in Rust and built for X11 on Linux, with a native `egui` UI.
 
-## What this is
-
-- Fork of https://github.com/FrostAtom/spammy
-- Native Rust implementation using `egui`
-- Designed for X11 on Linux
-- Supports input device selection and synthetic key repeat behavior
 
 ## Key behavior
 
