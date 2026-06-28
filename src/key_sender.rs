@@ -288,10 +288,8 @@ impl KeySender {
         Ok(())
     }
     
-    /// Force release ALL keys immediately using xdotool keyup for common keys
+    /// Force release ALL keys immediately
     pub fn force_release_all(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let common_modifiers = vec![29, 42, 54, 56, 97, 100]; // ctrl, shift(L/R), alt(L/R)
-        
         eprintln!("FORCE RELEASING ALL KEYS");
         
         // Release all tracked keys
@@ -305,16 +303,6 @@ impl KeySender {
                 }
             }
             held.clear();
-        }
-        
-        // Also release common modifier keys that might be stuck
-        for code in common_modifiers {
-            if let Some(name) = Self::keycode_to_xdotool_name(code) {
-                let _ = Command::new("xdotool")
-                    .arg("keyup")
-                    .arg(name)
-                    .output();
-            }
         }
         
         Ok(())

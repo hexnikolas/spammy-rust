@@ -10,8 +10,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
-
 fn main() -> Result<(), eframe::Error> {
     // Set up Ctrl+C handler with emergency key release
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -34,13 +32,12 @@ fn main() -> Result<(), eframe::Error> {
         thread::sleep(std::time::Duration::from_millis(200));
         std::process::exit(0);
     }).expect("Error setting Ctrl-C handler");
-
-    env_logger::init();
     
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([720.0, 480.0])
+            .with_inner_size([720.0, 520.0])
             .with_resizable(false),
+        centered: true,
         ..Default::default()
     };
     

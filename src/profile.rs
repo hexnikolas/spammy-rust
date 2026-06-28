@@ -7,9 +7,13 @@ use std::path::PathBuf;
 pub struct Profile {
     pub name: String,
     pub active_keys: HashSet<u32>,
+    #[serde(default)]
+    pub speedy_keys: HashSet<u32>,
     pub repeat_interval_ms: u64,
     #[serde(default)]
     pub target_window_name: Option<String>,
+    #[serde(default)]
+    pub input_device_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,24 +27,24 @@ impl Default for Profile {
         Profile {
             name: "Default".to_string(),
             active_keys: HashSet::new(),
+            speedy_keys: HashSet::new(),
             repeat_interval_ms: 100,
             target_window_name: None,
+            input_device_path: None,
         }
     }
 }
 
 impl Profile {
-    pub fn new(name: &str) -> Self {
-        Profile {
-            name: name.to_string(),
-            active_keys: HashSet::new(),
-            repeat_interval_ms: 100,
-            target_window_name: None,
-        }
-    }
-    
-    pub fn from_state(name: &str, active_keys: &[bool], repeat_interval_ms: u64, target_window_name: Option<String>) -> Self {
+    pub fn from_state(name: &str, active_keys: &[bool], speedy_keys: &[bool], repeat_interval_ms: u64, target_window_name: Option<String>, input_device_path: Option<String>) -> Self {
         let keys: HashSet<u32> = active_keys
+            .iter()
+            .enumerate()
+            .filter(|(_, &active)| active)
+            .map(|(idx, _)| idx as u32)
+            .collect();
+        
+        let speedy: HashSet<u32> = speedy_keys
             .iter()
             .enumerate()
             .filter(|(_, &active)| active)
@@ -50,14 +54,26 @@ impl Profile {
         Profile {
             name: name.to_string(),
             active_keys: keys,
+            speedy_keys: speedy,
             repeat_interval_ms,
             target_window_name,
+            input_device_path,
         }
     }
     
     pub fn to_active_keys_vec(&self) -> Vec<bool> {
         let mut keys = vec![false; 256];
         for &code in &self.active_keys {
+            if (code as usize) < keys.len() {
+                keys[code as usize] = true;
+            }
+        }
+        keys
+    }
+    
+    pub fn to_speedy_keys_vec(&self) -> Vec<bool> {
+        let mut keys = vec![false; 256];
+        for &code in &self.speedy_keys {
             if (code as usize) < keys.len() {
                 keys[code as usize] = true;
             }

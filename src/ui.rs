@@ -15,11 +15,7 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
     egui::CentralPanel::default()
         .frame(egui::Frame::none().fill(Color32::from_rgb(240, 240, 240)).inner_margin(egui::Margin::same(12.0)))
         .show(ctx, |ui| {
-            // Make scrollable area for controls to prevent cutoff
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    // Controls row
+            // Controls row
                     ui.horizontal(|ui| {
                         // Frequency control
                         ui.label("Frequency:");
@@ -98,8 +94,9 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
                     
                     ui.separator();
                     
-                    // Target window control
+                    // Target window and input device controls
                     ui.horizontal(|ui| {
+                        // Target window
                         if ui.button("📍 Target Window").clicked() {
                             app.toggle_window_picker();
                         }
@@ -107,12 +104,36 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
                         if let Some(name) = app.get_target_window_name() {
                             ui.label(format!("→ {}", name));
                         } else {
-                            ui.colored_label(Color32::from_rgb(200, 0, 0), "No target");
+                            ui.colored_label(Color32::from_rgb(150, 150, 150), "All windows");
                         }
                         
                         if ui.button("✕").clicked() {
                             app.clear_target_window();
                         }
+                        
+                        ui.separator();
+                        
+                        // Input device selector
+                        ui.label("Input:");
+                        let current_device = app.get_current_input_device().unwrap_or("None").to_string();
+                        let devices: Vec<_> = app.get_available_input_devices().to_vec();
+                        
+                        // Show just the device name, not full path
+                        let current_display = devices.iter()
+                            .find(|d| d.path == current_device)
+                            .map(|d| d.name.clone())
+                            .unwrap_or_else(|| current_device.clone());
+                        
+                        egui::ComboBox::from_id_source("input_device_selector")
+                            .selected_text(&current_display)
+                            .width(180.0)
+                            .show_ui(ui, |ui| {
+                                for device in &devices {
+                                    if ui.selectable_label(device.path == current_device, &device.name).clicked() {
+                                        app.switch_input_device(&device.path);
+                                    }
+                                }
+                            });
                     });
                     
                     // Window picker dropdown
@@ -148,7 +169,6 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
                     ui.horizontal(|ui| {
                         ui.label(format!("{} keys selected", active_count));
                     });
-                });
         });
     
     ctx.request_repaint();
@@ -156,6 +176,7 @@ pub fn draw_ui(ctx: &egui::Context, app: &mut SpammyApp) {
 
 fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
     let active_keys = app.get_active_keys().to_vec();
+    let speedy_keys = app.get_speedy_keys().to_vec();
     let pressed_keys = app.get_pressed_keys().to_vec();
     let keyboard = app.get_keyboard_layout();
     let keys = keyboard.keys.clone();
@@ -176,7 +197,7 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
     }
     
     // Draw each row with alignment padding
-    for (row_idx, row_keys) in rows.iter().enumerate() {
+    for (_row_idx, row_keys) in rows.iter().enumerate() {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
             
@@ -192,28 +213,35 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
                 }
                 
                 let is_active = (key.code as usize) < active_keys.len() && active_keys[key.code as usize];
+                let is_speedy = (key.code as usize) < speedy_keys.len() && speedy_keys[key.code as usize];
                 let is_pressed = (key.code as usize) < pressed_keys.len() && pressed_keys[key.code as usize];
                 
-                // Determine key styling - match reference image colors
-                let bg_color = if is_active && is_pressed {
+                // Determine key styling
+                // Yellow = speedy mode, Orange = spammy mode, Gray = normal
+                let bg_color = if is_speedy && is_pressed {
+                    Color32::from_rgb(220, 180, 0)  // Darker yellow when speedy AND pressed
+                } else if is_speedy {
+                    Color32::from_rgb(255, 220, 0)  // Yellow for Speedy Mode
+                } else if is_active && is_pressed {
                     Color32::from_rgb(200, 100, 0)  // Darker orange when active AND pressed
                 } else if is_active {
                     Color32::from_rgb(255, 140, 0)  // Orange for Spammy (active)
                 } else if is_pressed {
                     Color32::from_rgb(100, 100, 100)  // Darker gray when physically pressed
                 } else {
-                    Color32::from_rgb(200, 200, 200)  // Light gray inactive (like reference)
+                    Color32::from_rgb(200, 200, 200)  // Light gray inactive
                 };
                 
-                let text_color = if is_active {
-                    Color32::BLACK  // Black text on orange background
+                // Use black text for yellow/light backgrounds, white for dark gray
+                let text_color = if is_speedy || !is_pressed {
+                    Color32::BLACK
                 } else {
-                    Color32::BLACK  // Black text on light gray
+                    Color32::WHITE
                 };
                 
                 let key_width = key_base_width * key.width;
                 
-                // Create button with better borders for keyboard feel
+                // Create button without outline
                 let response = ui.add_sized(
                     egui::vec2(key_width, key_height),
                     egui::Button::new(
@@ -223,11 +251,17 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
                             .strong()
                     )
                     .fill(bg_color)
-                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(80, 80, 80)))
+                    .stroke(egui::Stroke::new(0.0, Color32::TRANSPARENT))
                 );
                 
+                // Left click = toggle spammy mode
                 if response.clicked() {
                     app.toggle_key(key.code as usize);
+                }
+                
+                // Right click = toggle speedy mode
+                if response.secondary_clicked() {
+                    app.toggle_speedy_key(key.code as usize);
                 }
             }
             
@@ -244,10 +278,14 @@ fn draw_keyboard(ui: &mut egui::Ui, app: &mut SpammyApp) {
     // Legend
     ui.separator();
     ui.horizontal(|ui| {
-        ui.colored_label(Color32::from_rgb(200, 40, 40), "■ Red = Disabled");
+        ui.label(egui::RichText::new("■ Yellow = Speedy").color(Color32::from_rgb(180, 140, 0)).strong().size(14.0));
+        ui.label(egui::RichText::new("?").color(Color32::from_rgb(60, 60, 60)).size(14.0).strong())
+            .on_hover_text("Right-click a key to enable Speedy mode.\nSends a single quick tap when you press the key.");
         ui.separator();
-        ui.colored_label(Color32::from_rgb(255, 140, 0), "■ Orange = Spammy");
+        ui.label(egui::RichText::new("■ Orange = Spammy").color(Color32::from_rgb(255, 140, 0)).strong().size(14.0));
+        ui.label(egui::RichText::new("?").color(Color32::from_rgb(60, 60, 60)).size(14.0).strong())
+            .on_hover_text("Left-click a key to enable Spammy mode.\nRepeats the key while you hold it down.");
         ui.separator();
-        ui.colored_label(Color32::from_rgb(200, 200, 200), "■ Gray = Ready");
+        ui.label(egui::RichText::new("■ Gray = Normal").color(Color32::from_rgb(80, 80, 80)).strong().size(14.0));
     });
 }

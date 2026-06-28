@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use crate::keyboard::KeyboardLayout;
 use crate::profile::{Profile, ProfilesData, save_profiles, load_profiles};
-use crate::input_handler::InputHandler;
+use crate::input_handler::{InputHandler, InputDeviceInfo};
 use crate::key_sender::KeySender;
 use lazy_static::lazy_static;
 
@@ -15,18 +15,21 @@ pub struct SpammyApp {
     keyboard_layout: KeyboardLayout,
     profiles_data: ProfilesData,
     active_keys: Vec<bool>,
+    speedy_keys: Vec<bool>,
     pressed_keys: Vec<bool>,
     prev_pressed_keys: Vec<bool>,
+    prev_speedy_pressed: Vec<bool>,
     last_key_send: Instant,
     key_repeat_interval: Duration,
     input_handler: Option<Arc<Mutex<InputHandler>>>,
     key_sender: Option<Arc<KeySender>>,
-    show_debug: bool,
     target_window_id: Option<u32>,
     target_window_name: Option<String>,
     available_windows: Vec<(u32, String)>,
     show_window_picker: bool,
     new_profile_name: String,
+    available_input_devices: Vec<InputDeviceInfo>,
+    current_input_device: Option<String>,
 }
 
 impl SpammyApp {
@@ -35,14 +38,14 @@ impl SpammyApp {
         let profiles_data = load_profiles();
         
         // Get initial state from active profile
-        let (active_keys, interval, target_window) = if let Some(ref name) = profiles_data.active_profile {
+        let (active_keys, speedy_keys, interval, target_window, saved_input_device) = if let Some(ref name) = profiles_data.active_profile {
             if let Some(profile) = profiles_data.profiles.iter().find(|p| &p.name == name) {
-                (profile.to_active_keys_vec(), profile.repeat_interval_ms, profile.target_window_name.clone())
+                (profile.to_active_keys_vec(), profile.to_speedy_keys_vec(), profile.repeat_interval_ms, profile.target_window_name.clone(), profile.input_device_path.clone())
             } else {
-                (vec![false; 256], 100, None)
+                (vec![false; 256], vec![false; 256], 100, None, None)
             }
         } else {
-            (vec![false; 256], 100, None)
+            (vec![false; 256], vec![false; 256], 100, None, None)
         };
         
         let mut app = SpammyApp {
@@ -50,18 +53,21 @@ impl SpammyApp {
             keyboard_layout: KeyboardLayout::new(),
             profiles_data,
             active_keys,
+            speedy_keys,
             pressed_keys: vec![false; 256],
             prev_pressed_keys: vec![false; 256],
+            prev_speedy_pressed: vec![false; 256],
             last_key_send: Instant::now(),
             key_repeat_interval: Duration::from_millis(interval),
             input_handler: None,
             key_sender: None,
-            show_debug: false,
             target_window_id: None,
             target_window_name: None,
             available_windows: Vec::new(),
             show_window_picker: false,
             new_profile_name: String::new(),
+            available_input_devices: Vec::new(),
+            current_input_device: saved_input_device,
         };
         
         // Restore target window after app is created
@@ -74,15 +80,37 @@ impl SpammyApp {
     }
     
     fn initialize(&mut self) {
+        // List available input devices
+        self.available_input_devices = InputHandler::list_available_devices();
+        
         // Initialize input handler (requires sudo/proper permissions)
-        match InputHandler::new() {
+        // Use saved device path if available, otherwise auto-detect
+        let init_result = if let Some(ref saved_path) = self.current_input_device {
+            println!("Restoring saved input device: {}", saved_path);
+            InputHandler::with_device(saved_path)
+        } else {
+            InputHandler::new()
+        };
+        
+        match init_result {
             Ok(handler) => {
+                self.current_input_device = Some(handler.get_device_path().to_string());
                 self.input_handler = Some(Arc::new(Mutex::new(handler)));
                 println!("Input handler initialized");
             }
             Err(e) => {
                 eprintln!("Failed to initialize input handler: {}", e);
                 eprintln!("Keyboard strokes won't be detected");
+                // If saved device failed, try auto-detect as fallback
+                if self.current_input_device.is_some() {
+                    println!("Trying auto-detect as fallback...");
+                    self.current_input_device = None;
+                    if let Ok(handler) = InputHandler::new() {
+                        self.current_input_device = Some(handler.get_device_path().to_string());
+                        self.input_handler = Some(Arc::new(Mutex::new(handler)));
+                        println!("Input handler initialized with fallback device");
+                    }
+                }
             }
         }
         
@@ -119,10 +147,12 @@ impl SpammyApp {
         // Clone data first to avoid borrow issues
         let profile_data = self.profiles_data.profiles.iter()
             .find(|p| p.name == name)
-            .map(|p| (p.to_active_keys_vec(), p.repeat_interval_ms, p.target_window_name.clone()));
+            .map(|p| (p.to_active_keys_vec(), p.to_speedy_keys_vec(), p.repeat_interval_ms, p.target_window_name.clone(), p.input_device_path.clone()));
         
-        if let Some((keys, interval, target_window)) = profile_data {
+        if let Some((keys, speedy, interval, target_window, input_device)) = profile_data {
             self.active_keys = keys;
+            self.speedy_keys = speedy;
+            self.prev_speedy_pressed = vec![false; 256];
             self.key_repeat_interval = Duration::from_millis(interval);
             self.profiles_data.active_profile = Some(name.to_string());
             
@@ -132,6 +162,13 @@ impl SpammyApp {
             } else {
                 self.clear_target_window();
             }
+            
+            // Restore input device
+            if let Some(device_path) = input_device {
+                if self.current_input_device.as_deref() != Some(&device_path) {
+                    self.switch_input_device(&device_path);
+                }
+            }
         }
     }
     
@@ -139,9 +176,11 @@ impl SpammyApp {
         println!("Saving profile: '{}'", name);
         let profile = Profile::from_state(
             name, 
-            &self.active_keys, 
+            &self.active_keys,
+            &self.speedy_keys,
             self.key_repeat_interval.as_millis() as u64,
             self.target_window_name.clone(),
+            self.current_input_device.clone(),
         );
         
         // Update or add profile
@@ -191,7 +230,21 @@ impl SpammyApp {
     
     pub fn toggle_key(&mut self, key_index: usize) {
         if key_index < self.active_keys.len() {
+            // If enabling spammy mode, disable speedy mode for this key
+            if !self.active_keys[key_index] && key_index < self.speedy_keys.len() {
+                self.speedy_keys[key_index] = false;
+            }
             self.active_keys[key_index] = !self.active_keys[key_index];
+        }
+    }
+    
+    pub fn toggle_speedy_key(&mut self, key_index: usize) {
+        if key_index < self.speedy_keys.len() {
+            // If enabling speedy mode, disable spammy mode for this key
+            if !self.speedy_keys[key_index] && key_index < self.active_keys.len() {
+                self.active_keys[key_index] = false;
+            }
+            self.speedy_keys[key_index] = !self.speedy_keys[key_index];
         }
     }
     
@@ -227,6 +280,9 @@ impl SpammyApp {
             self.spam_active_keys();
             self.last_key_send = now;
         }
+        
+        // Handle speedy keys (single-tap on press)
+        self.handle_speedy_keys();
     }
     
     fn send_all_pressed_keys(&mut self) {
@@ -264,26 +320,13 @@ impl SpammyApp {
             }
         }
         
-        // Modifier keys - never spam these (can cause system freezes)
-        const MODIFIER_KEYS: &[u32] = &[
-            29,  // Ctrl_L
-            97,  // Ctrl_R
-            42,  // Shift_L
-            54,  // Shift_R
-            56,  // Alt_L
-            100, // Alt_R
-            125, // Super_L (Win)
-            126, // Super_R
-        ];
-        
         if let Some(sender) = &self.key_sender {
-            // Collect all keys that should be spammed (active AND currently pressed, excluding modifiers)
+            // Collect all keys that should be spammed (active AND currently pressed)
             let keys_to_spam: Vec<u32> = (0..256u32)
                 .filter(|&code| {
                     let idx = code as usize;
                     idx < self.active_keys.len() && self.active_keys[idx]
                         && idx < self.pressed_keys.len() && self.pressed_keys[idx]
-                        && !MODIFIER_KEYS.contains(&code)
                 })
                 .collect();
             
@@ -296,6 +339,25 @@ impl SpammyApp {
         }
     }
     
+    fn handle_speedy_keys(&mut self) {
+        if let Some(sender) = &self.key_sender {
+            for code in 0..256u32 {
+                let code_idx = code as usize;
+                if code_idx >= self.speedy_keys.len() || !self.speedy_keys[code_idx] {
+                    continue;
+                }
+                let is_pressed = code_idx < self.pressed_keys.len() && self.pressed_keys[code_idx];
+                let was_pressed = code_idx < self.prev_speedy_pressed.len() && self.prev_speedy_pressed[code_idx];
+                if is_pressed && !was_pressed {
+                    if let Err(_e) = sender.send_key(code) {
+                        // Silently ignore errors
+                    }
+                }
+            }
+        }
+        self.prev_speedy_pressed = self.pressed_keys.clone();
+    }
+    
 
     pub fn get_active_keys(&self) -> &[bool] {
         &self.active_keys
@@ -303,6 +365,10 @@ impl SpammyApp {
     
     pub fn get_pressed_keys(&self) -> &[bool] {
         &self.pressed_keys
+    }
+    
+    pub fn get_speedy_keys(&self) -> &[bool] {
+        &self.speedy_keys
     }
     
     pub fn get_keyboard_layout(&self) -> &KeyboardLayout {
@@ -316,30 +382,6 @@ impl SpammyApp {
     pub fn set_repeat_interval_ms(&mut self, ms: u64) {
         if ms > 0 {
             self.key_repeat_interval = Duration::from_millis(ms);
-        }
-    }
-    
-    pub fn set_target_window(&mut self) {
-        // Get the currently focused window using xdotool
-        if let Ok(output) = std::process::Command::new("xdotool")
-            .arg("getactivewindow")
-            .output() {
-            if let Ok(window_id_str) = String::from_utf8(output.stdout) {
-                if let Ok(window_id) = window_id_str.trim().parse::<u32>() {
-                    self.target_window_id = Some(window_id);
-                    
-                    // Try to get the window name
-                    if let Ok(name_output) = std::process::Command::new("xdotool")
-                        .arg("getwindowname")
-                        .arg(window_id.to_string())
-                        .output() {
-                        if let Ok(name) = String::from_utf8(name_output.stdout) {
-                            self.target_window_name = Some(name.trim().to_string());
-                            println!("✓ Target window set: {} (ID: {})", self.target_window_name.as_ref().unwrap(), window_id);
-                        }
-                    }
-                }
-            }
         }
     }
     
@@ -459,6 +501,40 @@ impl SpammyApp {
             false
         } else {
             true // If no target window is set, always allow spamming
+        }
+    }
+    
+    pub fn get_available_input_devices(&self) -> &[InputDeviceInfo] {
+        &self.available_input_devices
+    }
+    
+    pub fn get_current_input_device(&self) -> Option<&str> {
+        self.current_input_device.as_deref()
+    }
+    
+    pub fn switch_input_device(&mut self, device_path: &str) {
+        println!("Switching to input device: {}", device_path);
+        
+        // Stop the old handler
+        if let Some(ref old_handler) = self.input_handler {
+            if let Ok(handler) = old_handler.lock() {
+                handler.stop();
+            }
+        }
+        // Give the thread a moment to stop and ungrab
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        self.input_handler = None;
+        
+        // Create new handler for the selected device
+        match InputHandler::with_device(device_path) {
+            Ok(handler) => {
+                self.current_input_device = Some(device_path.to_string());
+                self.input_handler = Some(Arc::new(Mutex::new(handler)));
+                println!("✓ Switched to device: {}", device_path);
+            }
+            Err(e) => {
+                eprintln!("Failed to switch to device {}: {}", device_path, e);
+            }
         }
     }
 }
