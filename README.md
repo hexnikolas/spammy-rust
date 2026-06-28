@@ -1,6 +1,6 @@
 # Spammy - Rust X11 Fork
 
-![Spammy app screenshot]([https://example.com/your-screenshot.png](https://i.imgur.com/9G1KBMi.png)
+![Spammy app screenshot]([https://example.com/your-screenshot.png](https://i.imgur.com/9G1KBMi.png))
 
 This repository is a Rust fork of the original Spammy project at https://github.com/FrostAtom/spammy.
 It is written in Rust and built for X11 on Linux, with a native `egui` UI.
