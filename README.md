@@ -10,8 +10,7 @@ It is written in Rust and built for X11 on Linux, with a native `egui` UI.
 - Fork of https://github.com/FrostAtom/spammy
 - Native Rust implementation using `egui`
 - Designed for X11 on Linux
-- Input device selection via `/dev/input/event*`
-- Synthetic key sending through Linux input
+- Supports input device selection and synthetic key repeat behavior
 
 ## Key behavior
 
